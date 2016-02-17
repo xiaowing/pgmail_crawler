@@ -1,6 +1,6 @@
 ﻿'''
 @author:    xiaowing
-@license:   Apache Lincese 2.0 
+@license:   MIT License 
 '''
 
 import io, sys, shutil, getopt, time, random, queue, urllib.parse, pdb
@@ -341,6 +341,8 @@ def sub_crawling_job(crawler):
     print("Crawler %d's crawling ended at %s" %(crawler.dest_no, end_time))
     print("The duration of Crawler %d's crawling is %s" %(crawler.dest_no, (end_time - start_time)))
 
+def version():
+    print ("PgmailCrawler v0.1.0")
 
 if __name__ == '__main__':
     main(sys.argv)
