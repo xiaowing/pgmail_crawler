@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.pyproj
 *.sln
+*.suo
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
