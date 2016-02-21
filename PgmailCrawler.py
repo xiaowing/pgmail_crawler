@@ -10,6 +10,7 @@ import requests
 import psycopg2
 
 from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
 from threading import Thread
 from bs4 import BeautifulSoup
 
@@ -21,6 +22,7 @@ proxies = {
 class PgmailCrawler:
     __base_url = 'http://www.postgresql.org/'
     __base_maillist_url = 'http://www.postgresql.org/list/'
+    #dest_list = ['pgsql-patches/', 'pgsql-hackers/', 'pgsql-cluster-hackers/']
     dest_list = ['pgsql-patches/', 'pgsql-hackers/']
 
     def __init__(self, start_year, start_month, dest_no=0, host="localhost", port=5432, database="postgres", pguser="postgres", userpwd=""):
@@ -48,21 +50,40 @@ class PgmailCrawler:
         return self.headers[random.randint(0, len(self.headers)-1)]
 
     def doCrawling(self):
-        next_link = self.initLinks(self.start_time, self.dest_no)
-        self.getMailInfos()
-        self.saveMailInfosIntoDB()
-        while next_link:
-            next_link = self.__initLinksInternal(next_link, by_next=True)
+        begin_date = self.start_time
+        while True:
+            crawling_link = PgmailCrawler.parsingDateToIndexUrl(begin_date, self.dest_no)
+            next_link = self.__initLinksInternal(crawling_link, by_next = False)
             self.getMailInfos()
             self.saveMailInfosIntoDB()
+            while next_link:
+                crawling_link = next_link
+                next_link = self.__initLinksInternal(next_link, by_next=True)
+                self.getMailInfos()
+                self.saveMailInfosIntoDB()
+            begin_date = PgmailCrawler.parsingDateFromUrl(crawling_link)
+
+            # Ignore the rest pages of current crawling year-month
+            # skip to the next month
+            begin_date = begin_date + relativedelta(months=+1)
+            
+            # The only exit of this infinite loop is the begin_date greater than today.
+            if begin_date > date.today():
+                #pdb.set_trace()
+                return
 
 
+    '''
     def initLinks(self, dt, destidx=0):
+        
         ym = dt.strftime('%Y-%m')
         url = urllib.parse.urljoin(PgmailCrawler.__base_maillist_url, PgmailCrawler.dest_list[destidx])
         url = urllib.parse.urljoin(url, ym)
+        
 
+        url = PgmailCrawler.parsingDateToIndexUrl(dt, destidx)
         return self.__initLinksInternal(url)
+    '''
 
     def __initLinksInternal(self, index_page_url, by_next = False):
         print(("Crawler %d Retriving mail links from %s..." %(self.dest_no, index_page_url)), flush=True)
@@ -103,7 +124,7 @@ class PgmailCrawler:
             except requests.exceptions.ConnectionError:
                 time.sleep(30)
             except Exception as e:
-                print("Crawler %d encountered an error. Error type: %s, Message: %s" %(self.dest_no, type(e),e))
+                print("Crawler %d encountered an error while crawling %s. Error type: %s, Message: %s" %(self.dest_no, index_page_url, type(e),e))
                 time.sleep(1)
 
 
@@ -116,6 +137,7 @@ class PgmailCrawler:
 
     def saveMailInfosIntoDB(self):
         if len(self.info_list) > 0:
+            print("Crawler %d saving data to DB." %self.dest_no)
             self.__insertMailInfoFromList()
             self.info_list = []
 
@@ -147,10 +169,11 @@ class PgmailCrawler:
         except requests.exceptions.ConnectionError:
                 time.sleep(30)
         except Exception as e:
-                print("Crawler %d encountered an error. Error type: %s, Message: %s" %(self.dest_no, type(e),e))
+                print("Crawler %d encountered an error while crawling %s. Error type: %s, Message: %s" %(self.dest_no, link, type(e),e))
                 time.sleep(1)
 
     def __insertMailInfoFromList(self):
+
         if self.password == "":
             conn = psycopg2.connect(host = self.pghost, port = self.pgport, database = self.database, user = self.pguser)
         else:
@@ -160,13 +183,15 @@ class PgmailCrawler:
         try:
             cur = conn.cursor()
             for mi in self.info_list:
-                cur.execute("INSERT INTO sch_crawler.mail_info VALUES (%(sender)s, %(title)s, %(time)s, %(url)s);",
-                        {'sender': mi.sender, 'title': mi.title, 
-                         'time': mi.date, 'url': mi.url})
-            
+                try:
+                    cur.execute("INSERT INTO sch_crawler.mail_info VALUES (%(sender)s, %(title)s, %(time)s, %(url)s);",
+                            {'sender': mi.sender, 'title': mi.title, 
+                            'time': mi.date, 'url': mi.url})
+                except psycopg2.DatabaseError as ex:
+                    print("Crawler %d encountered an Database error. SQLSTATE: %s, MESSAGE: %s."  %(self.dest_no, ex.pgcode, ex))
             cur.close()
         except psycopg2.Error as e:
-            print("Crawler %d encountered an DB error. SQLSTATE: %s, MESSAGE: %s."  %(self.dest_no,e.pgcode, e))
+            print("Crawler %d encountered an %s error. SQLSTATE: %s, MESSAGE: %s."  %(self.dest_no, type(e), e.pgcode, e))
         finally:
             conn.close()
 
@@ -174,7 +199,36 @@ class PgmailCrawler:
     def a_with_text_next(cls, tag):
         return tag.name == 'a' and tag.get_text() == 'Next'
 
-                
+    @classmethod
+    def parsingDateFromUrl(cls, url):
+        if not isinstance(url, str):
+            raise TypeError()
+
+        url = url.rstrip('/')
+        slash_index = url.rfind('/')
+        if slash_index == -1:
+            raise ValueError()
+
+        timestamp_string = url[(slash_index+1):]
+
+        format_string = ["%Y%m%d%H%M", "%Y-%m"]
+
+        try:
+            t = time.strptime(timestamp_string, format_string[0])
+            dt = date(*t[:3])
+        except ValueError:
+            t = time.strptime(timestamp_string, format_string[1])
+            dt = date(*t[:3])
+        return dt
+
+    @classmethod 
+    def parsingDateToIndexUrl(cls, dt, destidx=0):
+        if not isinstance(dt, date):
+            raise TypeError()
+        ym = dt.strftime('%Y-%m')
+        url = urllib.parse.urljoin(PgmailCrawler.__base_maillist_url, PgmailCrawler.dest_list[destidx])
+        url = urllib.parse.urljoin(url, ym)
+        return url
 
 class MailInfo:
     def __init__(self, url, title_text, date_text, from_text):
@@ -331,15 +385,20 @@ def ping_pg_server(host, port, database, user, pwd):
 
 def sub_crawling_job(crawler):
     if not isinstance(crawler, PgmailCrawler):
-        print("Incorrect argument. PgmailCrawler expected.")
+        print("Incorrect argument. PgmailCrawler expected.", flush=True)
         return
 
     start_time = datetime.now()
-    print("Crawler %d Start crawling at %s" %(crawler.dest_no, start_time))
-    crawler.doCrawling()
-    end_time = datetime.now()
-    print("Crawler %d's crawling ended at %s" %(crawler.dest_no, end_time))
-    print("The duration of Crawler %d's crawling is %s" %(crawler.dest_no, (end_time - start_time)))
+    print(("Crawler %d Start crawling at %s" %(crawler.dest_no, start_time)), flush=True)
+    try:
+        crawler.doCrawling()
+        end_time = datetime.now()
+        print("Crawler %d's crawling ended at %s" %(crawler.dest_no, end_time))
+    except Exception as ex:
+        end_time = datetime.now()
+        print("Crawler %d's encountered an unexpected error and the job was interrupted at %s. Error: %s, Message: %s" 
+              %(crawler.dest_no, end_time, type(ex), ex))
+    print(("The duration of Crawler %d's crawling is %s" %(crawler.dest_no, (end_time - start_time))), flush=True)
 
 def version():
     print ("PgmailCrawler v0.1.0")
