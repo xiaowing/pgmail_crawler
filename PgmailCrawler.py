@@ -72,19 +72,6 @@ class PgmailCrawler:
                 #pdb.set_trace()
                 return
 
-
-    '''
-    def initLinks(self, dt, destidx=0):
-        
-        ym = dt.strftime('%Y-%m')
-        url = urllib.parse.urljoin(PgmailCrawler.__base_maillist_url, PgmailCrawler.dest_list[destidx])
-        url = urllib.parse.urljoin(url, ym)
-        
-
-        url = PgmailCrawler.parsingDateToIndexUrl(dt, destidx)
-        return self.__initLinksInternal(url)
-    '''
-
     def __initLinksInternal(self, index_page_url, by_next = False):
         print(("Crawler %d Retriving mail links from %s..." %(self.dest_no, index_page_url)), flush=True)
         toget_flg = True
@@ -146,6 +133,9 @@ class PgmailCrawler:
         try:
             #page_source = requests.Session().get(link, headers = self.randHeader(), proxies=proxies)
             page_source = requests.Session().get(link, headers = self.randHeader())
+            if not page_source.status_code == requests.codes["ok"]:
+                return
+
             plain_text = page_source.text
             soup = BeautifulSoup(plain_text, "html.parser")
             msgtb = soup.find('table', class_='message')
