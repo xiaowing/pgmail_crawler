@@ -4,6 +4,9 @@ PgmailCrawler
 ###Summary
 我的第一个Python爬虫，作用是从PostgreSQL官网的邮件归档页面中扒取所需信息(邮件标题，送信人，送信时间，邮件的归档地址)，并将这些信息记录在指定的PostgreSQL数据库中.
 
+★★备注★★
+目前PostgreSQL的官网似乎升级了反爬虫策略，目前该爬虫在爬了100个不到的页面后就会被发现并被屏蔽。因此需要强化其反侦察策略
+
 ###Usage (Current version)
 
 该爬虫的启动方式如下：
@@ -31,4 +34,4 @@ $python3 PgmailCrawler.py -y 年份 -m 月份 -h PostgreSQL服务器域名 -p Po
 眼下考虑待改进的项目如下:
 - [ ] 加入连接池(优化).
 - [ ] 加入线程池将一个爬虫内部扒取邮件信息的动作也予以多线程化(优化).
-
+- [ ] 强化对于PG官网的anti-crawler策略的回避.
