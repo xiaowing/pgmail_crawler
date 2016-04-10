@@ -31,6 +31,10 @@ class proxy(object):
         else:
             return False
 
+    '''def pingBing(self):
+        r = requests.get("http://cn.bing.com/", proxies=str(self))
+        return r.status_code'''
+
     @classmethod
     def isValidIpFormat(cls, ip_str: str):
         matchobj = re.search(r"((?:(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d)))\.){3}(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d))))", ip_str)
@@ -56,6 +60,7 @@ def getLatestProxys():
     sibling = h2_latest_tag.find_next_sibling("table",class_ = "list")
     table = sibling
     retList = []
+    proxies = {}
 
     ListTr = table.find_all("tr")
     for tr in ListTr:
@@ -66,24 +71,32 @@ def getLatestProxys():
         ipaddr = str(ListTd[0].get_text()).strip()
         port = str(ListTd[1].get_text()).strip()
         zone = str(ListTd[2].get_text()).strip().replace("\n","")
-        nmd = str(ListTd[3].get_text()).strip()
-        xy = str(ListTd[4].get_text()).strip()
+        anonymous = str(ListTd[3].get_text()).strip()
+        https = str(ListTd[4].get_text()).strip()
         speed = str(ListTd[5].get_text()).strip()
         #time = str(ListTd[6].get_text()).strip()
-        p = proxy(ipaddr, port, zone, nmd, xy, speed)
+        p = proxy(ipaddr, port, zone, anonymous, https, speed)
         retList.append(p)
     else:
-        return retList
+        for item in retList:
+            if item.isHttps() == True:
+                if not 'https' in proxies.keys():
+                    proxies['https'] = str(item)
+            else:
+                if not 'http' in proxies.keys():
+                    proxies['http'] = str(item)
+        else:
+            return proxies
 
 
 def h2_with_text_latest(tag):
         return tag.name == 'h2' and tag.get_text() == '最新代理'
 
 if __name__  == '__main__':
-    ret = getLatestProxys()
-    if ret == None:
-        print("Nothing retrieved.")
-    else:
-        for item in ret:
-            print(item)
+    proxies = getLatestProxys()
+    print(proxies)
+    r = requests.Session().get("http://cn.bing.com/", proxies=proxies)
+    print(r.status_code)
+
+
 
