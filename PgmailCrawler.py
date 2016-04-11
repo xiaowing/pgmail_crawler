@@ -3,7 +3,7 @@
 @license:   MIT License 
 '''
 
-import io, sys, shutil, getopt, time, random, queue, urllib.parse, pdb
+import io, sys, shutil, getopt, time, random, queue, urllib.parse, pdb, threading
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer,encoding='utf8')  # Change the default encode of stdout.
 
 import requests
@@ -14,14 +14,12 @@ from dateutil.relativedelta import relativedelta
 from threading import Thread
 from bs4 import BeautifulSoup
 
-proxies = {
-  "http": "http://192.168.1.200:8080",
-  "https": "http://192.168.1.200:8080",
-}
+import ProxyipGetter
 
 class PgmailCrawler:
     __base_url = 'http://www.postgresql.org/'
     __base_maillist_url = 'http://www.postgresql.org/list/'
+    RETRY_TIMES = 3
     #dest_list = ['pgsql-patches/', 'pgsql-hackers/', 'pgsql-cluster-hackers/']
     dest_list = ['pgsql-patches/', 'pgsql-hackers/']
 
@@ -35,7 +33,8 @@ class PgmailCrawler:
             {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:40.0) Gecko/20100101 Firefox/40.0'},
             {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/44.0.2403.89 Chrome/44.0.2403.89 Safari/537.36'}
         ]
-
+        
+        self.proxies_dict = PgmailCrawler.generateProxies()
         self.link_list = queue.Queue()
         self.info_list = []
         self.pghost = host
@@ -45,6 +44,7 @@ class PgmailCrawler:
         self.password = userpwd
         self.start_time = date(start_year, start_month, 1)
         self.dest_no = dest_no
+        self._value_lock = threading.Lock()
 
     def randHeader(self):
         return self.headers[random.randint(0, len(self.headers)-1)]
@@ -77,8 +77,8 @@ class PgmailCrawler:
         toget_flg = True
         while  toget_flg:
             try:
-                #source_code = requests.Session().get(index_page_url, headers = self.randHeader(), proxies=proxies)
-                source_code = requests.Session().get(index_page_url, headers = self.randHeader())
+                source_code = requests.Session().get(index_page_url, headers = self.randHeader(), proxies=self.proxies_dict)
+                
                 toget_flg = False
                 plain_text = source_code.text
                 soup = BeautifulSoup(plain_text, "html.parser")
@@ -104,6 +104,11 @@ class PgmailCrawler:
                 if next_link_tag != None:
                     next_link = next_link_tag['href']
                     next_link = urllib.parse.urljoin(PgmailCrawler.__base_url, next_link)
+
+                    # Retrieve a new proxy for the crawler every time after a page scaned.
+                    with self._value_lock:
+                        self.proxies_dict = PgmailCrawler.generateProxies()
+
                     if next_link != index_page_url:
                         return next_link
                 return None
@@ -131,8 +136,8 @@ class PgmailCrawler:
 
     def __getMailInfoFromLink(self, link):
         try:
-            #page_source = requests.Session().get(link, headers = self.randHeader(), proxies=proxies)
-            page_source = requests.Session().get(link, headers = self.randHeader())
+            page_source = requests.Session().get(link, headers = self.randHeader(), proxies=self.proxies_dict)
+            #page_source = requests.Session().get(link, headers = self.randHeader())
             if not page_source.status_code == requests.codes["ok"]:
                 return
 
@@ -188,6 +193,19 @@ class PgmailCrawler:
     @classmethod
     def a_with_text_next(cls, tag):
         return tag.name == 'a' and tag.get_text() == 'Next'
+
+    @classmethod
+    def generateProxies(cls):
+        i = PgmailCrawler.RETRY_TIMES
+        while i > 0:
+            proxies = ProxyipGetter.getLatestProxys()
+            if ProxyipGetter.testUsability(proxies) != requests.codes['ok']:
+                time.sleep(5)
+                i = i - 1
+            else:
+                return proxies
+        else:
+            raise ConnectionError('Cannot retrieve a proper proxy.')
 
     @classmethod
     def parsingDateFromUrl(cls, url):
