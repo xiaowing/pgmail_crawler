@@ -409,7 +409,7 @@ def sub_crawling_job(crawler):
     print(("The duration of Crawler %d's crawling is %s" %(crawler.dest_no, (end_time - start_time))), flush=True)
 
 def version():
-    print ("PgmailCrawler v0.1.0")
+    print ("PgmailCrawler v0.2.0")
 
 if __name__ == '__main__':
     main(sys.argv)

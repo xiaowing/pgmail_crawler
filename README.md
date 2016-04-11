@@ -34,4 +34,4 @@ $python3 PgmailCrawler.py -y 年份 -m 月份 -h PostgreSQL服务器域名 -p Po
 眼下考虑待改进的项目如下:
 - [ ] 加入连接池(优化).
 - [ ] 加入线程池将一个爬虫内部扒取邮件信息的动作也予以多线程化(优化).
-- [ ] 强化对于PG官网的anti-crawler策略的回避.
+- [x] 增加动态的代理IP选择逻辑用以强化对于PG官网的anti-crawler策略的回避.
